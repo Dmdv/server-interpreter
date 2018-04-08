@@ -1,100 +1,141 @@
 package main
 
-import sigmastate._
 import sigmastate.Values._
-import sigmastate.lang.{SigmaBinder, SigmaParser, SigmaSpecializer, SigmaTyper}
-import sigmastate.utxo._
-import main.BoxHelpers.{fakeMessage, fakeSelf}
+import sigmastate._
 import sigmastate.lang.Terms._
+import sigmastate.lang._
+import sigmastate.lang.syntax.ParserException
 
 object Main extends App {
 
   val compiler = new Compiler()
 
-  compiler.sample()
+  var env = Map(
+    "timeout" -> 100,
+    "minToRaise" -> 1000,
+    "backerPubKey" -> "Sigma",
+    "projectPubKey" -> "Sigma"
+  )
 
+  var text = """{
+           let c1 = HEIGHT >= timeout && backerPubKey
+           let c2 = allOf(Array(
+             HEIGHT < timeout,
+             projectPubKey,
+             OUTPUTS.exists(fun (out: Box) = {
+               out.value >= minToRaise && out.propositionBytes == projectPubKey.propBytes
+             })
+           ))
+           c1 || c2
+    }"""
+
+  println("Next...")
+  println(text)
+  println()
+  io.StdIn.readLine("Press to compile...")
+  println()
+
+  compiler.Analyze(env, text)
+
+  text = """{
+           let c1 = HEIGHT >=== timeout && backerPubKey
+           let c2 = allOf(Array(
+             HEIGHT < timeout,
+             projectPubKey,
+             OUTPUTS.exists(fun (out: Box) = {
+               out.value >= minToRaise && out.propositionBytes == projectPubKey.propBytes
+             })
+           ))
+           c1 || c2
+    }"""
+
+  println("Next...unknown operator")
+  println(text)
+  println()
+  io.StdIn.readLine("Press to compile...")
+  println()
+
+  compiler.Analyze(env, text)
+
+  text = """{
+           let c1 = HEIGHT >= timeout22 && backerPubKey
+           let c2 = allOf(Array(
+             HEIGHT < timeout,
+             projectPubKey,
+             OUTPUTS.exists(fun (out: Box) = {
+               out.value >= minToRaise && out.propositionBytes == projectPubKey.propBytes
+             })
+           ))
+           c1 || c2
+    }"""
+
+  println("Next... undefined variable")
+  println(text)
+  println()
+  io.StdIn.readLine("Press to compile...")
+  println()
+
+  compiler.Analyze(env, text)
+
+  text = """{
+           let c1 = HEIGHT >= timeout && backerPubKey
+           let c2 = allOf(Array
+             HEIGHT < timeout,
+             projectPubKey,
+             OUTPUTS.exists(fun (out: Box) = {
+               out.value >= minToRaise && out.propositionBytes == projectPubKey.propBytes
+             })
+           ))
+           c1 || c2
+    }"""
+
+  println("Next... missing bracket")
+  println(text)
+  println()
+  io.StdIn.readLine("Press to compile...")
+  println()
+
+  compiler.Analyze(env, text)
 }
 
 class Compiler {
 
-  def sample(): Unit = {
+  val err = Seq("Unknown binary operation")
 
+  def Analyze(params: Map[String, Any], script: String): Unit = {
+
+    var map: Map[String, Any] = Map()
+
+    params foreach ((e: (String, Any)) => {
+      e._2 match {
+        case "Sigma" =>
+          val prover = new ErgoProvingInterpreter
+          map += (e._1 -> prover.dlogSecrets.head.publicImage)
+        case _ => map += (e._1 -> e._2)
+      }
+    })
+
+    println()
     println("Starting to compile...")
+    println()
 
-    val verifier = new ErgoInterpreter
+    /*val compiledScript = */try {
+      compile(map, script.stripMargin).asBoolValue
+    }
+    catch {
+      case e: ParserException =>
+        println("Error: " + e.getMessage)
+        println()
+        return
+      case e: TyperException =>
+        println("Error: " + e.getMessage)
+        println()
+        return
+    }
 
-    //backer's prover with his private key
-    val backerProver = new ErgoProvingInterpreter
-    //project's prover with his private key
-    val projectProver = new ErgoProvingInterpreter
-    val backerPubKey = backerProver.dlogSecrets.head.publicImage
-    val projectPubKey = projectProver.dlogSecrets.head.publicImage
-
-    val timeout = IntConstant(100)
-    val minToRaise = IntConstant(1000)
-
-    val env = Map(
-      "timeout" -> 100,
-      "minToRaise" -> 1000,
-      "backerPubKey" -> backerPubKey,
-      "projectPubKey" -> projectPubKey
-    )
-
-    val compiledScript = compile(env,
-      """{
-        | let c1 = HEIGHT >= timeout && backerPubKey
-        | let c2 = allOf(Array(
-        |   HEIGHT < timeout,
-        |   projectPubKey,
-        |   OUTPUTS.exists(fun (out: Box) = {
-        |     out.value >= minToRaise && out.propositionBytes == projectPubKey.propBytes
-        |   })
-        | ))
-        | c1 || c2
-        | }
-      """.stripMargin).asBoolValue
-
-    println("Simpe output")
-    println("{")
-    println("\t%s".format(compiledScript))
-    println("\topCode: %s".format(compiledScript.opCode))
-    println("\tpropBytes: %s".format(compiledScript.propBytes))
-    println("\tcost: %s".format(compiledScript.cost))
-    println("\tevaluated: %s".format(compiledScript.evaluated))
-    println("}")
-
-    val tx1Output1 = ErgoBox(minToRaise.value, projectPubKey)
-    val tx1Output2 = ErgoBox(1, projectPubKey)
-
-    val tx1 = ErgoTransaction(IndexedSeq(), IndexedSeq(tx1Output1, tx1Output2))
-
-    val crowdFundingScript = OR(
-      AND(GE(Height, timeout), backerPubKey),
-      AND(
-        Seq(
-          LT(Height, timeout),
-          projectPubKey,
-          Exists(Outputs, 21,
-            AND(
-              GE(ExtractAmount(TaggedBox(21)), minToRaise),
-              EQ(ExtractScriptBytes(TaggedBox(21)), ByteArrayConstant(projectPubKey.propBytes))
-            )
-          )
-        )
-      )
-    )
-
-    val outputToSpend = ErgoBox(10, crowdFundingScript)
-
-    val ctx1 = ErgoContext(
-      currentHeight = timeout.value - 1,
-      lastBlockUtxoRoot = AvlTreeData.dummy,
-      boxesToSpend = IndexedSeq(),
-      spendingTransaction = tx1,
-      self = outputToSpend)
-
-    val result = backerProver.prove(compiledScript, ctx1, fakeMessage)
-    println("Prove result: %s".format(result))
+    println()
+    println("Compiled successfully")
+    println()
   }
 
   def compile(env: Map[String, Any], code: String): Value[SType] = {
