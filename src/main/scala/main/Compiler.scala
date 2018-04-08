@@ -100,11 +100,15 @@ object Main extends App {
 
 class Compiler {
 
+  // TODO: Parse output and show error location
+  
   val err = Seq("Unknown binary operation")
 
   def Analyze(params: Map[String, Any], script: String): Unit = {
 
     var map: Map[String, Any] = Map()
+
+    // TODO: Temp stub for Sigma parameter
 
     params foreach ((e: (String, Any)) => {
       e._2 match {
@@ -119,7 +123,7 @@ class Compiler {
     println("Starting to compile...")
     println()
 
-    /*val compiledScript = */try {
+    try {
       compile(map, script.stripMargin).asBoolValue
     }
     catch {
