@@ -4,7 +4,7 @@
 		module="server-interpreter-build"
 		revision="0.1.0-SNAPSHOT"
 		status="integration"
-		publication="20180408172527"
+		publication="20180409182433"
 		e:sbtVersion="1.0" e:scalaVersion="2.12"
 	>
 		<description>

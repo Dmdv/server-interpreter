@@ -8,7 +8,7 @@ import sigmastate.lang.syntax.ParserException
 
 object Main extends App {
 
-  val compiler = new Compiler()
+  val compiler = new SigmaCompiler()
 
   var env = Map(
     "timeout" -> 100,
@@ -98,10 +98,10 @@ object Main extends App {
   compiler.Analyze(env, text)
 }
 
-class Compiler {
+class SigmaCompiler {
 
   // TODO: Parse output and show error location
-  
+
   val err = Seq("Unknown binary operation")
 
   def Analyze(params: Map[String, Any], script: String): Unit = {
@@ -124,7 +124,7 @@ class Compiler {
     println()
 
     try {
-      compile(map, script.stripMargin).asBoolValue
+      compile(map, script.stripMargin)
     }
     catch {
       case e: ParserException =>
